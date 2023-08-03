@@ -36,15 +36,29 @@ class Booking:
 )"""
 
 
+class VenueInactiveError(BaseException):
+	message = "Venue account is either inactive or has been suspended."
+
+	def __init__(self):
+		super().__init__(self.message)
+
+
+class VenueNonExistentError(BaseException):
+	message = "Venue ID does not exist."
+
+	def __init__(self):
+		super().__init__(self.message)
+
+
 class HallmasterAPI:
-	version = '0.1.0'
+	version = '0.1.1'
 
 	api_subdomain = "https://v2.hallmaster.co.uk"
 	api_time_format = "%Y-%m-%dT%H:%M:%S+00:00"  # note: tz addon as %z not currently working for datetime.now(), assume UTC
 	api_user_agent = f"Hallmaster Python API v{version}"
 
-	def __init__(self, hall_id: int):
-		self.hall_id = hall_id
+	def __init__(self, venue_id: int):
+		self.hall_id = venue_id
 		self.rooms_info = self.get_rooms_info()
 
 	def format_date(self, date: datetime) -> str:
@@ -56,6 +70,11 @@ class HallmasterAPI:
 			headers={'user-agent': self.api_user_agent}
 		)
 		soup = BeautifulSoup(html.content, "html.parser")
+		if "This account is either inactive or has been suspended." in soup.text:
+			raise VenueInactiveError
+		elif "Page Not Found!" in soup.text:
+			raise VenueNonExistentError
+
 		colour_list = soup.find(id="RoomColorList")
 		rooms_info = {}
 		for div in colour_list.find_all(onclick=True):
@@ -90,9 +109,12 @@ class HallmasterAPI:
 
 		collated_entries = {}
 		for booking in bookings:
-			if booking["title"] not in ["Private Booking", "Provisional Booking"]:
+			if booking["title"] not in ["", "Private Booking", "Provisional Booking"]:
 				key = (booking["title"], booking["start"], booking["end"])
-				room = self.rooms_info[booking['color']]["name"]
+				try:
+					room = self.rooms_info[booking['color']]["name"]
+				except KeyError:
+					room = self.get_room_from_details(booking["Id"])
 
 				value = Booking(
 					id=booking["Id"],
@@ -162,8 +184,19 @@ class HallmasterAPI:
 		else:
 			return " "
 
+	def get_room_from_details(self, booking_id: int) -> str:
+		html = requests.get(
+			f"{self.api_subdomain}/Scheduler/ViewBooking/{booking_id}",
+			headers={'user-agent': self.api_user_agent}
+		)
+		soup = BeautifulSoup(html.content, "html.parser")
+		if room := soup.find(lambda tag: tag.name == "label" and "Rooms" in tag.text).find_next_sibling("div").text.strip():
+			return room
+		else:
+			return " "
+
 
 if __name__ == '__main__':
-	api = HallmasterAPI(hall_id=11119)
+	api = HallmasterAPI(venue_id=11200)
 	print(api.rooms_info)
-	api.get_bookings(datetime.now(), datetime.now()+timedelta(days=90))
+	print(api.get_bookings(datetime.now(), datetime.now()+timedelta(days=90)))
