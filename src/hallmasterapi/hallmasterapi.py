@@ -1,7 +1,4 @@
 import re
-from pprint import pprint
-from typing import Any
-
 import requests
 import json
 from datetime import datetime, timedelta
@@ -51,7 +48,7 @@ class VenueNonExistentError(BaseException):
 
 
 class HallmasterAPI:
-	version = '0.1.1'
+	version = '0.1.4'
 
 	api_subdomain = "https://v2.hallmaster.co.uk"
 	api_time_format = "%Y-%m-%dT%H:%M:%S+00:00"  # note: tz addon as %z not currently working for datetime.now(), assume UTC
